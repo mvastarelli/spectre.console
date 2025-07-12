@@ -5,7 +5,10 @@ namespace Spectre.Console;
 /// </summary>
 public sealed class ProgressTask : IProgress<double>
 {
-    private readonly List<ProgressSample> _samples;
+    private const int MaxSamples = 1024;
+    private static readonly TimeSpan _maxSampleAge = TimeSpan.FromSeconds(30);
+
+    private readonly CircularBuffer<ProgressSample> _samples;
     private readonly object _lock;
 
     private double _maxValue;
@@ -104,7 +107,7 @@ public sealed class ProgressTask : IProgress<double>
     /// <param name="autoStart">Whether or not the task should start automatically.</param>
     public ProgressTask(int id, string description, double maxValue, bool autoStart = true)
     {
-        _samples = new List<ProgressSample>();
+        _samples = new CircularBuffer<ProgressSample>(MaxSamples);
         _lock = new object();
         _maxValue = maxValue;
         _value = 0;
@@ -203,22 +206,10 @@ public sealed class ProgressTask : IProgress<double>
                 _value = _maxValue;
             }
 
-            var timestamp = DateTime.Now;
-            var threshold = timestamp - TimeSpan.FromSeconds(30);
+            var now = DateTime.Now;
 
-            // Remove samples that's too old
-            while (_samples.Count > 0 && _samples[0].Timestamp < threshold)
-            {
-                _samples.RemoveAt(0);
-            }
-
-            // Keep maximum of 1000 samples
-            while (_samples.Count > 1000)
-            {
-                _samples.RemoveAt(0);
-            }
-
-            _samples.Add(new ProgressSample(timestamp, Value - startValue));
+            _samples.Remove(p => now - p.Timestamp < _maxSampleAge);
+            _samples.Add(new ProgressSample(now, Value - startValue));
         }
     }
 
