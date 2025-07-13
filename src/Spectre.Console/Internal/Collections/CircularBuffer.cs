@@ -7,19 +7,19 @@
 /// <typeparam name="T">The type to hold in the buffer.</typeparam>
 /// <remarks>
 /// <para>
-/// Circular buffers are useful for scenarios such as stats where we want to
-/// automatically expire the oldest elements without the need to reallocate memory.
+/// Circular buffers are useful for scenarios such as <see cref="ProgressTask"/>
+/// where we want to cap the number of samples to a fixed size and automatically
+/// remove old samples when new ones are added. Using <see cref="List{T}.RemoveAt"/>
+/// for this is inefficient since it requires shifting the entire array to the
+/// left by one. In contrast, a circular buffer supports both addition and removal
+/// with a time complexity of O(1).
 /// </para>
 /// <para>
 /// This implementation uses a regular <see cref="List{T}"/> and adds new elements until
-/// the capacity is reached. When this occurs, an internal _offset is incremented and
-/// the new element overwrites the (_offset + Count) element in the list, wrapping
+/// the capacity is reached. Afterward, new elements overwrite the
+/// (_offset + Count) element and the internal _offset is incremented, wrapping around
 /// as needed. Likewise, removal is done by decrementing the Count property until it
 /// reaches zero.
-/// </para>
-/// <para>
-/// Other than the initial resizing of <see cref="List{T}"/> both addition and removal
-/// of elements have a time complexity of O(1) and require 0 memory allocations.
 /// </para>
 /// </remarks>
 internal sealed class CircularBuffer<T> : IList<T>
@@ -51,36 +51,33 @@ internal sealed class CircularBuffer<T> : IList<T>
 
     public void Add(T item)
     {
+        if (_internal.Count < _capacity)
+        {
+            _internal.Add(item);
+        }
+        else
+        {
+            _internal[(_offset + Count) % _capacity] = item;
+        }
+
         if (Count < _capacity)
         {
-            AddInternal(item);
             Count++;
         }
         else
         {
-            AddInternal(item);
             _offset = (_offset + 1) % _capacity;
         }
     }
 
     public void Clear()
     {
+        _internal.Clear();
         _offset = 0;
         Count = 0;
     }
 
-    public bool Contains(T item)
-    {
-        for (var i = 0; i < Count; i++)
-        {
-            if (EqualityComparer<T>.Default.Equals(this[i], item))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    public bool Contains(T item) => IndexOf(item) != -1;
 
     public void CopyTo(T[] array, int arrayIndex)
     {
@@ -107,9 +104,11 @@ internal sealed class CircularBuffer<T> : IList<T>
         return -1;
     }
 
-    public void Insert(int index, T item) => throw new NotSupportedException();
+    public void Insert(int index, T item)
+        => throw new NotSupportedException("This type does not support insertion at arbitrary index locations.");
 
-    public bool Remove(T item) => throw new NotSupportedException();
+    public bool Remove(T item)
+        => throw new NotSupportedException("This type does not support removal of arbitrary items.");
 
     public void Remove()
     {
@@ -122,27 +121,8 @@ internal sealed class CircularBuffer<T> : IList<T>
         _offset = (_offset + 1) % _capacity;
     }
 
-    public void Remove(Func<T, bool> predicate)
-    {
-        while (Count > 0 && predicate(_internal[_offset]))
-        {
-            Remove();
-        }
-    }
-
-    public void RemoveAt(int index) => throw new NotSupportedException();
-
-    private void AddInternal(T item)
-    {
-        if (_internal.Count < _capacity)
-        {
-            _internal.Add(item);
-        }
-        else
-        {
-            _internal[(_offset + Count) % _capacity] = item;
-        }
-    }
+    public void RemoveAt(int index)
+        => throw new NotSupportedException("This type does not support removal at arbitrary index locations.");
 
     private sealed class CircularListEnumerator(CircularBuffer<T> buffer) : IEnumerator<T>
     {
